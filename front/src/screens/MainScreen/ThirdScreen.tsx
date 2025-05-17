@@ -1,122 +1,175 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
+  SafeAreaView,
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   FlatList,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSelector } from 'react-redux';
+import { RootState } from '../../redux/config/store';
+import { useAppDispatch } from '../../redux/config/reduxHook';
+import { fetchMonthRecords } from '../../redux/actions/carbonAction';
+import { CarbonRecord } from '../../redux/reducers/carbonSlice';
 
-// ------------------ Types ------------------
-interface DayData {
-  day: number; // 1~31
-  plus: number; // 탄소 절감(+)
-  minus: number; // 탄소 증가(-)
-  records: { id: string; desc: string; amount: number }[]; // 더미 내역
-}
-
-// ------------------ Dummy Month Data (3월) ------------------
-const generateDummyMonth = (): DayData[] => {
-  const data: DayData[] = [];
-  for (let d = 1; d <= 31; d += 1) {
-    const plus = Math.random() > 0.6 ? Math.floor(Math.random() * 3000) : 0; // gCO2 절감
-    const minus = Math.random() > 0.6 ? -Math.floor(Math.random() * 5000) : 0; // gCO2 증가
-    const records = [
-      {
-        id: `${d}-1`,
-        desc: '더미 탄소 내역',
-        amount: plus + minus,
-      },
-    ];
-    data.push({ day: d, plus, minus, records });
-  }
-  return data;
-};
-
-const monthData = generateDummyMonth();
-
-// ------------------ Calendar Cell ------------------
+/* ───────────── 달력 한 칸 컴포넌트 ───────────── */
+const CELL = 46;
 interface CellProps {
-  item: DayData;
-  isSelected: boolean;
-  onSelect: (day: number) => void;
+  day: number;
+  plus: number;
+  minus: number;
+  selected: boolean;
+  onSelect: (d: number) => void;
 }
-const CalendarCell: React.FC<CellProps> = ({ item, isSelected, onSelect }) => {
-  const { day, plus, minus } = item;
-  return (
-    <TouchableOpacity
-      style={[styles.cell, isSelected && styles.cellSelected]}
-      onPress={() => onSelect(day)}
-    >
-      <Text style={styles.cellDay}>{day}</Text>
-      {plus !== 0 && (
-        <Text style={styles.plusText}>{`+${plus / 1000}`}</Text>
-      )}
-      {minus !== 0 && (
-        <Text style={styles.minusText}>{`${minus / 1000}`}</Text>
-      )}
-    </TouchableOpacity>
-  );
-};
+const DayCell: React.FC<CellProps> = ({
+  day,
+  plus,
+  minus,
+  selected,
+  onSelect,
+}) => (
+  <TouchableOpacity
+    style={[styles.cell, selected && styles.cellSelected]}
+    onPress={() => onSelect(day)}
+  >
+    <Text style={styles.cellDay}>{day}</Text>
+    {plus > 0 && <Text style={styles.plusText}>{`+${plus / 1000}`}</Text>}
+    {minus < 0 && <Text style={styles.minusText}>{`${minus / 1000}`}</Text>}
+  </TouchableOpacity>
+);
 
-// ------------------ Main Screen ------------------
+/* ───────────── 메인 스크린 ───────────── */
 const ThirdScreen: React.FC = () => {
-  const [selectedDay, setSelectedDay] = useState<number>(new Date().getDate());
+  const dispatch = useAppDispatch();
+  const { monthRecords, loading } = useSelector((s: RootState) => s.carbon);
 
-  const selectedData = useMemo(
-    () => monthData.find((d) => d.day === selectedDay) ?? monthData[0],
-    [selectedDay],
-  );
+  /* 현재 연·월 state */
+  const today = new Date();
+  const [year, setYear] = useState<number>(today.getFullYear());
+  const [month, setMonth] = useState<number>(today.getMonth() + 1); // 1~12
+  const [selectedDay, setSelectedDay] = useState<number>(today.getDate());
 
-  const totalMonth = useMemo(
-    () =>
-      monthData.reduce((sum, d) => sum + d.plus + d.minus, 0),
+  /* ─ fetch when year/month changes ─ */
+  useEffect(() => {
+    dispatch(fetchMonthRecords(String(year), String(month).padStart(2, '0')));
+    // 선택된 날짜를 1일로 리셋 (월 넘어갈 때 index 에러 방지)
+    setSelectedDay(1);
+  }, [year, month]);
+
+  /* 달 변경 핸들러 */
+  const changeMonth = useCallback(
+    (dir: 'prev' | 'next') => {
+      setMonth((prev) => {
+        const newMonth = dir === 'prev' ? prev - 1 : prev + 1;
+        if (newMonth === 0) {
+          setYear((y) => y - 1);
+          return 12;
+        }
+        if (newMonth === 13) {
+          setYear((y) => y + 1);
+          return 1;
+        }
+        return newMonth;
+      });
+    },
     [],
   );
 
+  /* 해당 월의 일 수 */
+  const daysInMonth = new Date(year, month, 0).getDate(); // 28~31
+
+  /* 날짜별 집계 데이터 */
+  const calendarData = useMemo(() => {
+    const base = Array.from({ length: daysInMonth }, (_, idx) => ({
+      day: idx + 1,
+      plus: 0,
+      minus: 0,
+      records: [] as CarbonRecord[],
+    }));
+    monthRecords.forEach((r) => {
+      const d = new Date(r.date).getDate() - 1;
+      if (d >= 0 && d < daysInMonth) {
+        if (r.amount > 0) base[d].plus += r.amount;
+        if (r.amount < 0) base[d].minus += r.amount;
+        base[d].records.push(r);
+      }
+    });
+    return base;
+  }, [monthRecords, daysInMonth]);
+
+  const totalMonth = useMemo(
+    () => monthRecords.reduce((sum, r) => sum + r.amount, 0),
+    [monthRecords],
+  );
+
+  const selectedData =
+    calendarData.find((c) => c.day === selectedDay) ?? calendarData[0];
+
+  /* ───────────── UI ───────────── */
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header: 월, 총 절감량 */}
+      {/* 월 네비게이터 */}
       <View style={styles.headerBar}>
-        <Ionicons name="chevron-back" size={20} color="#2B2B2B" />
-        <Text style={styles.headerMonth}>3월</Text>
-        <Ionicons name="chevron-forward" size={20} color="#2B2B2B" />
+        <TouchableOpacity onPress={() => changeMonth('prev')}>
+          <Ionicons name="chevron-back" size={22} color="#2B2B2B" />
+        </TouchableOpacity>
+        <Text style={styles.headerMonth}>
+          {year}년 {month}월
+        </Text>
+        <TouchableOpacity onPress={() => changeMonth('next')}>
+          <Ionicons name="chevron-forward" size={22} color="#2B2B2B" />
+        </TouchableOpacity>
       </View>
-      <Text style={styles.totalText}>{`${(totalMonth / 1000).toLocaleString()} kg`}</Text>
-      <Text style={styles.totalSub}>이번 달 탄소 절감 • 증가 합계</Text>
 
-      {/* Calendar */}
+      <Text style={styles.totalText}>
+        {(totalMonth / 1000).toLocaleString()} kg
+      </Text>
+      <Text style={styles.totalSub}>이달의 탄소 절감 · 증가 합계</Text>
+
+      {loading && (
+        <ActivityIndicator
+          size="small"
+          color="#3384FF"
+          style={{ marginVertical: 8 }}
+        />
+      )}
+
+      {/* 달력 */}
       <View style={styles.calendarGrid}>
-        {/* 요일 헤더 */}
         {['일', '월', '화', '수', '목', '금', '토'].map((w) => (
           <Text key={w} style={styles.weekday}>
             {w}
           </Text>
         ))}
-        {/* 날짜 셀 */}
-        {monthData.map((d) => (
-          <CalendarCell
-            key={d.day}
-            item={d}
-            isSelected={d.day === selectedDay}
+        {calendarData.map(({ day, plus, minus }) => (
+          <DayCell
+            key={day}
+            day={day}
+            plus={plus}
+            minus={minus}
+            selected={day === selectedDay}
             onSelect={setSelectedDay}
           />
         ))}
       </View>
 
-      {/* Record List */}
-      <Text style={styles.recordHeader}>{`3월 ${selectedDay}일 기록`}</Text>
+      {/* 세부 내역 */}
+      <Text style={styles.recordHeader}>{`${month}월 ${selectedDay}일 기록`}</Text>
       <FlatList
-        data={selectedData.records}
-        keyExtractor={(item) => item.id}
+        data={selectedData?.records ?? []}
+        keyExtractor={(item) => item._id}
         renderItem={({ item }) => (
           <View style={styles.recordItem}>
-            <Text style={styles.recordAmount}>{`${item.amount / 1000} kg`}</Text>
+            <Text style={styles.recordAmount}>
+              {(item.amount / 1000).toFixed(2)} kg
+            </Text>
             <Text style={styles.recordDesc}>{item.desc}</Text>
           </View>
         )}
+        ListEmptyComponent={<Text style={styles.noData}>기록이 없습니다.</Text>}
         contentContainerStyle={{ paddingBottom: 120 }}
       />
     </SafeAreaView>
@@ -125,62 +178,50 @@ const ThirdScreen: React.FC = () => {
 
 export default ThirdScreen;
 
-// ------------------ Styles ------------------
-const CELL_SIZE = 46;
+/* ───────────── Styles ───────────── */
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
+  safeArea: { flex: 1, backgroundColor: '#FFF' },
+
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    marginTop: 4,
+    justifyContent: 'center',
+    gap: 12,
+    paddingTop: 8,
   },
-  headerMonth: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginHorizontal: 8,
-  },
+  headerMonth: { fontSize: 20, fontWeight: 'bold' },
+
   totalText: {
     fontSize: 28,
     fontWeight: 'bold',
-    marginTop: 8,
     textAlign: 'center',
-    color: '#2B2B2B',
+    marginTop: 4,
   },
   totalSub: {
     fontSize: 12,
-    color: '#666',
     textAlign: 'center',
-    marginBottom: 12,
+    color: '#666',
+    marginBottom: 8,
   },
+
   calendarGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginHorizontal: 8,
   },
   weekday: {
-    width: CELL_SIZE,
+    width: CELL,
     textAlign: 'center',
     fontSize: 12,
     marginBottom: 4,
     color: '#888',
   },
-  cell: {
-    width: CELL_SIZE,
-    height: 60,
-    alignItems: 'center',
-    marginVertical: 2,
-  },
-  cellSelected: {
-    borderRadius: 8,
-    backgroundColor: '#E0F0FF',
-  },
+  cell: { width: CELL, height: 60, alignItems: 'center', marginVertical: 2 },
+  cellSelected: { backgroundColor: '#E0F0FF', borderRadius: 8 },
   cellDay: { fontWeight: '600', color: '#2B2B2B', marginBottom: 2 },
   plusText: { fontSize: 10, color: '#1E8BFF' },
   minusText: { fontSize: 10, color: '#FF6464' },
+
   recordHeader: {
     marginTop: 16,
     marginLeft: 16,
@@ -188,18 +229,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   recordItem: {
-    paddingHorizontal: 16,
     paddingVertical: 12,
+    paddingHorizontal: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: '#eee',
   },
-  recordAmount: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#2B2B2B',
-  },
-  recordDesc: {
-    fontSize: 12,
-    color: '#666',
-  },
+  recordAmount: { fontSize: 16, fontWeight: '700', color: '#2B2B2B' },
+  recordDesc: { fontSize: 12, color: '#666' },
+  noData: { textAlign: 'center', color: '#999', padding: 20 },
 });
