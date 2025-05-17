@@ -4,7 +4,7 @@ import {token_storage} from './storage';
 import {Alert} from 'react-native';
 import { resetAndNavigate } from '../../navigation/NavigationUtils';
 
-export const appAxios = axios.create({
+export const  appAxios = axios.create({
   baseURL: BASE_URL,
 });
 

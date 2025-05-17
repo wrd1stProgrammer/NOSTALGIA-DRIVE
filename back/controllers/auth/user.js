@@ -11,6 +11,8 @@ const getProfile = async (req, res) => {
   const decodedToken = jwt.verify(accessToken, process.env.ACCESS_TOKEN_SECRET);
   const userId = decodedToken.userId;
 
+  
+
   const user = await User.findById(userId);
   if (!user) {
     throw new NotFoundError("User not found");

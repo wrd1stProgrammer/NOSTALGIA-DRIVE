@@ -7,5 +7,4 @@ const {
 const router = express.Router();
 
 router.route("/profile").get(getProfile).patch(updateProfile);
-
 module.exports = router;

@@ -1,13 +1,13 @@
-const express = require("express");
-const {
+// const express = require("express");
+// const {
     
-  geminai
-} = require("../controllers/gemini/gemini");
+//   geminai
+// } = require("../controllers/gemini/gemini");
 
-const router = express.Router();
+// const router = express.Router();
 
-router.post("/geminitest", geminai);
+// router.post("/geminitest", geminai);
 
 
 
-module.exports = router;
+// module.exports = router;

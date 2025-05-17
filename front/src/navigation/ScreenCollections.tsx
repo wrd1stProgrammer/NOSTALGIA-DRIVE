@@ -22,7 +22,7 @@ export const authStack = [
     {
         name: "RegisteryScreen",
         component: RegisteryScreen,
-    }
+    },
 
 ];
 
@@ -43,7 +43,7 @@ export const dashboardStack = [
         name:"ThirdScreen",
         component: ThirdScreen,
     },
-    
+
     
 ];
 
