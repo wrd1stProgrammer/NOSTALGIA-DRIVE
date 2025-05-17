@@ -8,6 +8,7 @@ const MissionSchema = new mongoose.Schema({
       {
         title: String,
         desc: String,
+        expected_reduction_g : Number,
         completed: { type: Boolean, default: false },
       },
     ],

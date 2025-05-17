@@ -45,8 +45,9 @@ const CameraPickerModal: FC<{
     }
   }, [images]);
 
-  const geminiCall =async()=>{
-    const imageResponse = images ? await dispatch(uploadFile(images, "qcr_image")) : null;
+  const geminiCall =async(uri:string)=>{
+    const imageResponse = await dispatch(uploadFile(uri, "qcr_image"));
+    console.log(imageResponse,'response');
     await dispatch(geminiImageAction(imageResponse));
   }
 
@@ -66,8 +67,9 @@ const CameraPickerModal: FC<{
       else if (res.assets && res.assets.length > 0 ) {
         const uri = res.assets[0].uri;
         setImages(uri || null);
+        geminiCall(uri);
       }
-      geminiCall();
+      
       onClose();
     });
   };
@@ -85,8 +87,9 @@ const CameraPickerModal: FC<{
     else if (res.assets && res.assets.length > 0 ) {
       const uri = res.assets[0].uri;
       setImages(uri || null);
+      geminiCall(uri);
     }
-    geminiCall();
+    
     onClose();
   };
 
